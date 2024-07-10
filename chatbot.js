@@ -15,11 +15,11 @@ const openai = new OpenAI({
 });
 
 // Function to get a response from OpenAI
-const getResponse = async (message) => {
+const getResponse = async (messages) => {
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: message }],
+      messages: messages,
     });
     return response.choices[0].message.content;
   } catch (error) {
@@ -31,6 +31,14 @@ const getResponse = async (message) => {
 // Main chat loop
 const chat = async () => {
   console.log("Welcome to the GPT-3 Chatbot! Type 'exit' to quit.");
+  
+  let messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "assistant", "content": "Hello! How can I assist you today?"}
+  ];
+
+  console.log("Bot: Hello! How can I assist you today?");
+
   while (true) {
     const userInput = readline.question('You: ');
 
@@ -39,9 +47,12 @@ const chat = async () => {
       break;
     }
 
+    messages.push({"role": "user", "content": userInput});
+
     try {
-      const botResponse = await getResponse(userInput);
+      const botResponse = await getResponse(messages);
       console.log(`Bot: ${botResponse}`);
+      messages.push({"role": "assistant", "content": botResponse});
     } catch (error) {
       console.error("An error occurred:", error.message);
     }
