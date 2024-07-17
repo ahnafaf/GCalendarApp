@@ -10,8 +10,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google-cloud/local-auth": "^2.1.0",
     "dotenv": "^16.4.5",
-    "googleapis": "^140.0.1",
+    "googleapis": "^105.0.0",
     "openai": "^4.52.5",
     "readline-sync": "^1.4.10",
     "sqlite3": "^5.1.7"

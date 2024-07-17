@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+const gapi = require('./googleCalendar');
 
 const readline = require('readline-sync');
 const OpenAI = require('openai');
+
 require('dotenv').config();
 
 // Check if the API key is set
@@ -45,7 +47,14 @@ const chat = async () => {
     if (userInput.toLowerCase() === 'exit') {
       console.log('Goodbye!');
       break;
+    } else if (userInput.toLowerCase() === 'event_test') {
+      await gapi.setupGoogleCalendar();
+      const daternow = new Date();
+      const events = await gapi.getCalendarEvent(daternow, new Date(daternow.getTime() + 30 * 24 * 60 * 60 * 1000));
+      console.log(events);
+      break;    
     }
+    
 
     messages.push({"role": "user", "content": userInput});
 
