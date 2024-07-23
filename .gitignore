@@ -30,7 +30,10 @@ credentials.json
 token.json
 
 # JSON files (be careful with this if you have important JSON config files)
-*.json
+token.json
+
+# DB files
+calendar.db
 
 # IDEs and editors
 /.idea
