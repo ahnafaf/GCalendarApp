@@ -46,7 +46,7 @@ const chat = async () => {
       const now = new Date();
       const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       try {
-        const events = await getCalendarEvents(now, oneMonthFromNow);
+        const events = await getCalendarEvents(new Date(2023, 3, 1), oneMonthFromNow);
         console.log("\nUpcoming events:");
         events.forEach((event, i) => {
           console.log(`${i + 1}. ${event.summary} (${event.start.dateTime})`);

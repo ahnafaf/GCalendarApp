@@ -107,4 +107,18 @@ async function getCalendarEvents(start_date, end_date) {
   }
 }
 
-module.exports = { setupGoogleCalendar, addCalendarEvent, getCalendarEvents };
+// Function to fetch events from Google Calendar
+async function listEvents(auth, lastSyncedTime) {
+  const res = await calendar.events.list({
+    calendarId: 'primary',
+    timeMin: lastSyncedTime,
+    maxResults: 2500,
+    singleEvents: true,
+    orderBy: 'startTime',
+  });
+
+  return res.data.items;
+}
+
+
+module.exports = { setupGoogleCalendar, addCalendarEvent, getCalendarEvents, listEvents };
