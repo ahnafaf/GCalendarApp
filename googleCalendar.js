@@ -1,95 +1,49 @@
-
 const { google } = require('googleapis');
 const { OAuth2Client } = require('google-auth-library');
 const fs = require('fs').promises;
 const readline = require('readline');
+const path = require('path');
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
-const CREDENTIALS_PATH = 'credentials.json';
-const TOKEN_PATH = 'token.json';
+const TOKEN_PATH = path.join(process.cwd(), 'token.json');
+const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json');
+const REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
 
 let calendar;
 
-const setupGoogleCalendar = async () => {
+async function setupGoogleCalendar() {
   try {
     const credentials = JSON.parse(await fs.readFile(CREDENTIALS_PATH, 'utf8'));
-    const { client_secret, client_id, redirect_uris } = credentials.installed;
-
-    // Log the credentials to verify they are being read correctly
-    console.log("Client ID:", client_id);
-    console.log("Client Secret:", client_secret);
-
-    if (!client_secret || !client_id) {
-      throw new Error('Missing client_id or client_secret in credentials.json');
-    }
-
-    const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
-
+    const { client_secret, client_id } = credentials.installed;
+    const oAuth2Client = new OAuth2Client(client_id, client_secret, 'urn:ietf:wg:oauth:2.0:oob');
+    
+    let token;
     try {
-      const token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf8'));
+      token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf8'));
       oAuth2Client.setCredentials(token);
     } catch (error) {
-      await getAccessToken(oAuth2Client);
+      console.log('No existing token found or token invalid. Initiating new token retrieval.');
+      token = await getNewToken(oAuth2Client);
+      oAuth2Client.setCredentials(token);
     }
-
+    
     calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
+    console.log('Google Calendar setup completed successfully.');
+    return true;
   } catch (error) {
     console.error('Error setting up Google Calendar:', error.message);
-    throw error;
-  }
-};
-
-async function loadSavedCredentialsIfExist() {
-  try {
-    const content = await fs.readFile(TOKEN_PATH);
-    const credentials = JSON.parse(content);
-    const oAuth2Client = new OAuth2Client();
-    oAuth2Client.setCredentials(credentials);
-    return oAuth2Client;
-  } catch (err) {
-    return null;
+    return false;
   }
 }
 
-async function authorize() {
-  await setupGoogleCalendar();
-  let client = await loadSavedCredentialsIfExist();
-  if (client) {
-    return client;
-  }
-  client = await authenticate();
-  if (client.credentials) {
-    await saveCredentials(client);
-  }
-  return client;
-}
-
-
-
-async function authenticate() {
-  const credentials = JSON.parse(await fs.readFile(CREDENTIALS_PATH, 'utf8'));
-  const { client_secret, client_id, redirect_uris } = credentials.installed;
-
-  // Log the credentials to verify they are being read correctly
-  console.log("Client ID:", client_id);
-  console.log("Client Secret:", client_secret);
-
-  if (!client_secret || !client_id) {
-    throw new Error('Missing client_id or client_secret in credentials.json');
-  }
-
-  const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
-  await getAccessToken(oAuth2Client);
-  return oAuth2Client;
-}
-
-async function getAccessToken(oAuth2Client) {
+async function getNewToken(oAuth2Client) {
   const authUrl = oAuth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
+    prompt: 'consent'
   });
-  console.log('Authorize this app by visiting this url:', authUrl);
 
+  console.log('Authorize this app by visiting this url:', authUrl);
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -102,16 +56,19 @@ async function getAccessToken(oAuth2Client) {
     });
   });
 
-  const tokenResponse = await oAuth2Client.getToken(code);
-  oAuth2Client.setCredentials(tokenResponse.tokens);
-  await saveCredentials(tokenResponse.tokens);
+  try {
+    const { tokens } = await oAuth2Client.getToken(code);
+    oAuth2Client.setCredentials(tokens);
+    await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens));
+    console.log('Token stored to', TOKEN_PATH);
+    return tokens;
+  } catch (err) {
+    console.error('Error retrieving access token', err);
+    throw err;
+  }
 }
 
-async function saveCredentials(token) {
-  await fs.writeFile(TOKEN_PATH, JSON.stringify(token));
-}
-
-const addCalendarEvent = async (summary, start, end, description, location) => {
+async function addCalendarEvent(summary, start, end, description, location) {
   const event = {
     summary,
     location,
@@ -125,23 +82,20 @@ const addCalendarEvent = async (summary, start, end, description, location) => {
       calendarId: 'primary',
       resource: event,
     });
-    console.log('Event created: %s', res.data.htmlLink);
+    console.log('Event created:', res.data.htmlLink);
     return res.data;
   } catch (error) {
     console.error('Error creating event:', error);
     throw error;
   }
-};
+}
 
-const getCalendarEvent = async (start_date, end_date) => {
-  if (!calendar) {
-    await setupGoogleCalendar();
-  }
+async function getCalendarEvents(start_date, end_date) {
   try {
     const res = await calendar.events.list({
       calendarId: 'primary',
-      timeMin: start_date,
-      timeMax: end_date,
+      timeMin: start_date.toISOString(),
+      timeMax: end_date.toISOString(),
       maxResults: 10,
       singleEvents: true,
       orderBy: 'startTime',
@@ -153,5 +107,4 @@ const getCalendarEvent = async (start_date, end_date) => {
   }
 }
 
-
-module.exports = { setupGoogleCalendar, addCalendarEvent, getCalendarEvent, authorize, getAccessToken };
+module.exports = { setupGoogleCalendar, addCalendarEvent, getCalendarEvents };

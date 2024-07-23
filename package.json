@@ -13,6 +13,7 @@
     "@google-cloud/local-auth": "^2.1.0",
     "dotenv": "^16.4.5",
     "googleapis": "^105.0.0",
+    "open": "^10.1.0",
     "openai": "^4.52.5",
     "readline-sync": "^1.4.10",
     "sqlite3": "^5.1.7"
