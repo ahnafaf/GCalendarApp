@@ -91,12 +91,13 @@ async function addCalendarEvent(summary, start, end, description, location) {
 }
 
 async function getCalendarEvents(start_date, end_date) {
+  
   try {
     const res = await calendar.events.list({
       calendarId: 'primary',
       timeMin: start_date.toISOString(),
       timeMax: end_date.toISOString(),
-      maxResults: 10,
+      maxResults: 1000,
       singleEvents: true,
       orderBy: 'startTime',
     });

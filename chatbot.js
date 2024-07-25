@@ -12,6 +12,62 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const tools = [
+  {
+    type: "function",
+    function: {
+      name: "addCalendarEvent",
+      description: "Add a new event to the primary Google Calendar",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: {
+            type: "string",
+            description: "The title of the event",
+          },
+          start: {
+            type: "string",
+            description: "The start time of the event in ISO 8601 format",
+          },
+          end: {
+            type: "string",
+            description: "The end time of the event in ISO 8601 format",
+          },
+          description: {
+            type: "string",
+            description: "A description of the event",
+          },
+          location: {
+            type: "string",
+            description: "The location of the event",
+          },
+        },
+        required: ["summary", "start", "end"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getCalendarEvents",
+      description: "Get events from the primary Google Calendar within a specified date range",
+      parameters: {
+        type: "object",
+        properties: {
+          start_date: {
+            type: "string",
+            description: "The start date in ISO 8601 format",
+          },
+          end_date: {
+            type: "string",
+            description: "The end date in ISO 8601 format",
+          },
+        },
+        required: ["start_date", "end_date"],
+      },
+    },
+  },
+];
 
 const chat = async () => {
   console.log("Welcome to the GCalendar!");
@@ -21,62 +77,7 @@ const chat = async () => {
     {"role": "system", "content": "You are a helpful assistant with access to Google Calendar."},
     {"role": "assistant", "content": "Hello! How can I assist you today?"}
   ];
-  let tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "addCalendarEvent",
-            "description": "Add a new event to the primary Google Calendar",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "summary": {
-                        "type": "string",
-                        "description": "The title of the event",
-                    },
-                    "start": {
-                        "type": "string",
-                        "description": "The start time of the event in ISO 8601 format",
-                    },
-                    "end": {
-                        "type": "string",
-                        "description": "The end time of the event in ISO 8601 format",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "A description of the event",
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "The location of the event",
-                    },
-                },
-                "required": ["summary", "start", "end"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "getCalendarEvents",
-            "description": "Get events from the primary Google Calendar within a specified date range",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {
-                        "type": "string",
-                        "description": "The start date in ISO 8601 format",
-                    },
-                    "end_date": {
-                        "type": "string",
-                        "description": "The end date in ISO 8601 format",
-                    },
-                },
-                "required": ["start_date", "end_date"],
-            },
-        },
-    },
-]
+
   console.log("\nBot: Hello! How can I assist you today?");
 
   while (true) {
@@ -85,16 +86,13 @@ const chat = async () => {
     if (userInput.toLowerCase() === 'exit') {
       console.log('Goodbye!');
       break;
-    } else if (userInput.toLowerCase() === 'events' || userInput.toLowerCase() === 'todays events') { // debug
-      //const now = new Date();
-      // const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    } else if (userInput.toLowerCase() === 'events' || userInput.toLowerCase() === 'todays events') {
       const today = new Date();
       const startOfDay = new Date(today.setHours(0, 0, 0, 0));
       const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-      getCalendarEvents(startOfDay, endOfDay)
       try {
         const events = await getCalendarEvents(startOfDay, endOfDay);
-        console.log("\nUpcoming events:");
+        console.log("\nToday's events:");
         events.forEach((event, i) => {
           console.log(`${i + 1}. ${event.summary} (${event.start.dateTime})`);
         });
@@ -102,48 +100,86 @@ const chat = async () => {
         console.log("Failed to fetch events. Make sure Google Calendar is set up correctly. Error: ", error);
       }
       continue;
-    } else if (userInput.toLowerCase() === 'add event') {
-      const summary = readline.question('Event summary: ');
-      const start = readline.question('Start time (YYYY-MM-DDTHH:MM:SS): ');
-      const end = readline.question('End time (YYYY-MM-DDTHH:MM:SS): ');
-      const description = readline.question('Description: ');
-      const location = readline.question('Location: ');
-
-      try {
-        await addCalendarEvent(summary, start, end, description, location);
-        console.log("Event added successfully!");
-      } catch (error) {
-        console.log("Failed to add event. Make sure Google Calendar is set up correctly.");
-      }
-      continue;
     }
 
     messages.push({"role": "user", "content": userInput});
 
     try {
-      const botResponse = await getResponse(messages,tools);
-      console.log(`Bot: ${botResponse}`);
-      messages.push({"role": "assistant", "content": botResponse});
+      const response = await openai.chat.completions.create({
+        model: "gpt-4-0613",
+        messages: messages,
+        tools: tools,
+        tool_choice: "auto",
+      });
+
+      const responseMessage = response.choices[0].message;
+      messages.push(responseMessage);
+
+      if (responseMessage.tool_calls) {
+        for (const toolCall of responseMessage.tool_calls) {
+          if (toolCall.function.name === "addCalendarEvent") {
+            const functionArgs = JSON.parse(toolCall.function.arguments);
+            try {
+              const result = await addCalendarEvent(
+                functionArgs.summary,
+                functionArgs.start,
+                functionArgs.end,
+                functionArgs.description,
+                functionArgs.location
+              );
+              console.log("Event added successfully:", result.htmlLink);
+              messages.push({
+                role: "function",
+                name: "addCalendarEvent",
+                content: JSON.stringify({ success: true, link: result.htmlLink })
+              });
+            } catch (error) {
+              console.error("Error adding event:", error);
+              messages.push({
+                role: "function",
+                name: "addCalendarEvent",
+                content: JSON.stringify({ success: false, error: error.message })
+              });
+            }
+          } else if (toolCall.function.name === "getCalendarEvents") {
+            const functionArgs = JSON.parse(toolCall.function.arguments);
+            try {
+              const events = await getCalendarEvents(new Date(functionArgs.start_date), new Date(functionArgs.end_date));
+              console.log("\nEvents in specified range:");
+              events.forEach((event, i) => {
+                console.log(`${i + 1}. ${event.summary} (${event.start.dateTime})`);
+              });
+              messages.push({
+                role: "function",
+                name: "getCalendarEvents",
+                content: JSON.stringify(events)
+              });
+            } catch (error) {
+              console.error("Error fetching events:", error);
+              messages.push({
+                role: "function",
+                name: "getCalendarEvents",
+                content: JSON.stringify({ error: error.message })
+              });
+            }
+          }
+        }
+
+        // After handling all tool calls, get the AI's response
+        const followUpResponse = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: messages,
+        });
+
+        console.log(`Bot: ${followUpResponse.choices[0].message.content}`);
+        messages.push(followUpResponse.choices[0].message);
+      } else {
+        console.log(`Bot: ${responseMessage.content}`);
+      }
     } catch (error) {
       console.error("An error occurred:", error.message);
     }
   }
 };
-
-const getResponse = async (messages,tools) => {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: messages,
-      tools: tools,
-      tool_choice: "auto"
-    });
-    return response.choices[0].message.content;
-  } catch (error) {
-    console.error("Error getting response from OpenAI: ", error.message);
-    return "Sorry, I couldn't think of a response.";
-  }
-};
-
 
 module.exports = { chat };
