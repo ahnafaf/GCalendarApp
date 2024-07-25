@@ -16,6 +16,7 @@
     "open": "^10.1.0",
     "openai": "^4.52.5",
     "readline-sync": "^1.4.10",
+    "sequelize": "^6.37.3",
     "sqlite3": "^5.1.7"
   }
 }
