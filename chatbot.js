@@ -72,9 +72,18 @@ const tools = [
 const chat = async () => {
   console.log("Welcome to the GCalendar!");
   console.log("\nType 'exit' to quit, 'events' to list upcoming events, or 'add event' to create a new event.");
+  const now = new Date();
+  const currentDateTimeString = now.toISOString();
+  const currentYear = now.getFullYear();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const offset = -now.getTimezoneOffset() / 60;
+  const timeZoneString = `${timeZone} (UTC${offset >= 0 ? '+' : ''}${offset})`;
 
   let messages = [
-    {"role": "system", "content": "You are a helpful assistant with access to Google Calendar."},
+    {
+      "role": "system", 
+      "content": `You are a helpful assistant with access to Google Calendar. The current date and time is ${currentDateTimeString}. The user's timezone is ${timeZoneString}. When adding events, interpret the user's intent and provide the event details using this current date, time, and timezone as context. Always use ${currentYear} or a future year for events unless explicitly specified otherwise. The user will be asked to confirm before the event is added.`
+    },
     {"role": "assistant", "content": "Hello! How can I assist you today?"}
   ];
 
@@ -82,7 +91,10 @@ const chat = async () => {
 
   while (true) {
     const userInput = readline.question('You: ');
-
+    const now = new Date();
+    const currentDateTimeString = now.toISOString();
+  
+  
     if (userInput.toLowerCase() === 'exit') {
       console.log('Goodbye!');
       break;
@@ -102,11 +114,14 @@ const chat = async () => {
       continue;
     }
 
-    messages.push({"role": "user", "content": userInput});
-
+    messages.push({
+      "role": "user", 
+      "content": `Current date and time: ${currentDateTimeString}. User's timezone: ${timeZoneString}. User input: ${userInput}`
+    });
+    
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4-0613",
+        model: "gpt-4o",
         messages: messages,
         tools: tools,
         tool_choice: "auto",
@@ -119,26 +134,39 @@ const chat = async () => {
         for (const toolCall of responseMessage.tool_calls) {
           if (toolCall.function.name === "addCalendarEvent") {
             const functionArgs = JSON.parse(toolCall.function.arguments);
-            try {
-              const result = await addCalendarEvent(
-                functionArgs.summary,
-                functionArgs.start,
-                functionArgs.end,
-                functionArgs.description,
-                functionArgs.location
-              );
-              console.log("Event added successfully:", result.htmlLink);
+            
+            // Ask for user confirmation
+            const userConfirmed = askForConfirmation(functionArgs);
+            
+            if (userConfirmed) {
+              try {
+                const result = await addCalendarEvent(
+                  functionArgs.summary,
+                  functionArgs.start,
+                  functionArgs.end,
+                  functionArgs.description,
+                  functionArgs.location
+                );
+                console.log("Event added successfully:", result.htmlLink);
+                messages.push({
+                  role: "function",
+                  name: "addCalendarEvent",
+                  content: JSON.stringify({ success: true, link: result.htmlLink })
+                });
+              } catch (error) {
+                console.error("Error adding event:", error);
+                messages.push({
+                  role: "function",
+                  name: "addCalendarEvent",
+                  content: JSON.stringify({ success: false, error: error.message })
+                });
+              }
+            } else {
+              console.log("Event addition cancelled by user.");
               messages.push({
                 role: "function",
                 name: "addCalendarEvent",
-                content: JSON.stringify({ success: true, link: result.htmlLink })
-              });
-            } catch (error) {
-              console.error("Error adding event:", error);
-              messages.push({
-                role: "function",
-                name: "addCalendarEvent",
-                content: JSON.stringify({ success: false, error: error.message })
+                content: JSON.stringify({ success: false, error: "User cancelled event addition" })
               });
             }
           } else if (toolCall.function.name === "getCalendarEvents") {
@@ -181,5 +209,17 @@ const chat = async () => {
     }
   }
 };
+
+function askForConfirmation(event) {
+  console.log("\nPlease confirm the event details:");
+  console.log(`Summary: ${event.summary}`);
+  console.log(`Start: ${new Date(event.start).toLocaleString()}`);
+  console.log(`End: ${new Date(event.end).toLocaleString()}`);
+  console.log(`Description: ${event.description || 'N/A'}`);
+  console.log(`Location: ${event.location || 'N/A'}`);
+  
+  const confirmation = readline.question('Do you want to add this event? (yes/no): ').toLowerCase();
+  return confirmation === 'yes' || confirmation === 'y';
+}
 
 module.exports = { chat };
