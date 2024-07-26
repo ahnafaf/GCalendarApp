@@ -82,7 +82,7 @@ const chat = async () => {
   let messages = [
     {
       "role": "system", 
-      "content": `You are a helpful assistant with access to Google Calendar. The current date and time is ${currentDateTimeString}. The user's timezone is ${timeZoneString}. When adding events, interpret the user's intent and provide the event details using this current date, time, and timezone as context. Always use ${currentYear} or a future year for events unless explicitly specified otherwise. The user will be asked to confirm before the event is added.`
+      "content": `You are a helpful assistant with access to Google Calendar. The current date and time is ${currentDateTimeString}. The user's timezone is ${timeZoneString}. When adding events, interpret the user's intent and provide the event details using this current date, time, and timezone as context. Always use ${currentYear} or a future year for events unless explicitly specified otherwise.`
     },
     {"role": "assistant", "content": "Hello! How can I assist you today?"}
   ];
