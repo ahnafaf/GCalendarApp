@@ -120,6 +120,105 @@ async function listEvents(auth, lastSyncedTime) {
   return res.data.items;
 }
 
+// Add these functions to your googleCalendar.js file
 
+async function modifyCalendarEvent(eventId, updates) {
+  if (!eventId) {
+    throw new Error('Event ID is required to modify an event.');
+  }
 
-module.exports = { setupGoogleCalendar, addCalendarEvent, getCalendarEvents, listEvents };
+  try {
+    // First, get the existing event
+    const existingEvent = await calendar.events.get({
+      calendarId: 'primary',
+      eventId: eventId,
+    });
+
+    // Merge the updates with the existing event data
+    const updatedEvent = {
+      ...existingEvent.data,
+      ...updates,
+    };
+
+    // Ensure start and end times are in the correct format
+    if (updatedEvent.start && updatedEvent.start.dateTime) {
+      updatedEvent.start.dateTime = new Date(updatedEvent.start.dateTime).toISOString();
+    }
+    if (updatedEvent.end && updatedEvent.end.dateTime) {
+      updatedEvent.end.dateTime = new Date(updatedEvent.end.dateTime).toISOString();
+    }
+
+    // Update the event
+    const res = await calendar.events.update({
+      calendarId: 'primary',
+      eventId: eventId,
+      resource: updatedEvent,
+    });
+
+    console.log(`Event updated successfully: ${res.data.htmlLink}`);
+    return res.data;
+  } catch (error) {
+    console.error('Error modifying event:', error);
+    if (error.code === 404) {
+      throw new Error('Event not found. Please check the event ID.');
+    }
+    throw error;
+  }
+}
+
+async function deleteCalendarEvent(eventId) {
+  if (!eventId) {
+    throw new Error('Event ID is required to delete an event.');
+  }
+
+  try {
+    // First, get the event details
+    const event = await calendar.events.get({
+      calendarId: 'primary',
+      eventId: eventId,
+    });
+
+    // Ask for confirmation
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const confirmation = await new Promise((resolve) => {
+      rl.question(`Are you sure you want to delete the event "${event.data.summary}"? (yes/no): `, (answer) => {
+        rl.close();
+        resolve(answer.toLowerCase() === 'yes');
+      });
+    });
+
+    if (!confirmation) {
+      console.log('Event deletion cancelled.');
+      return false;
+    }
+
+    // Delete the event
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId: eventId,
+    });
+
+    console.log('Event deleted successfully.');
+    return true;
+  } catch (error) {
+    console.error('Error deleting event:', error);
+    if (error.code === 404) {
+      throw new Error('Event not found. Please check the event ID.');
+    }
+    throw error;
+  }
+}
+
+// Don't forget to export these new functions
+module.exports = { 
+  setupGoogleCalendar, 
+  addCalendarEvent, 
+  getCalendarEvents, 
+  listEvents,
+  modifyCalendarEvent,
+  deleteCalendarEvent
+};
