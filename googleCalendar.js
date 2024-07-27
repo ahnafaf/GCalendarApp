@@ -82,7 +82,6 @@ async function addCalendarEvent(summary, start, end, description, location) {
       calendarId: 'primary',
       resource: event,
     });
-    console.log('Event created:', res.data.htmlLink);
     return res.data;
   } catch (error) {
     console.error('Error creating event:', error);
@@ -120,6 +119,7 @@ async function listEvents(auth, lastSyncedTime) {
 
   return res.data.items;
 }
+
 
 
 module.exports = { setupGoogleCalendar, addCalendarEvent, getCalendarEvents, listEvents };
