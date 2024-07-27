@@ -4,6 +4,15 @@
 
 This project is a Node.js-based command-line application that integrates with Google Calendar, allowing users to manage their calendar events through natural language interactions. It uses OpenAI's GPT model to interpret user inputs and perform calendar operations.
 
+Why use this?
+
+- Contextual awareness: Plan your week using events. Allows you to get a sanity check on events you potentially might have missed.
+- Natural Language Event Creation: Add events to your calendar using everyday language, making event creation quick and intuitive.
+- Intelligent Scheduling: The assistant understands complex time-related requests, helping to schedule events efficiently based on your availability.
+- Quick Event Modifications: Easily change event details like time, date, or participants without navigating through multiple menus.
+- Effortless Event Retrieval: Quickly find out what's on your schedule for any given day, week, or month using simple queries.
+
+
 ## Features
 
 - Add new events to Google Calendar
