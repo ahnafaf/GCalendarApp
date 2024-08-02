@@ -166,50 +166,17 @@ async function modifyCalendarEvent(eventId, updates) {
   }
 }
 
+
 async function deleteCalendarEvent(eventId) {
-  if (!eventId) {
-    throw new Error('Event ID is required to delete an event.');
-  }
-
   try {
-    // First, get the event details
-    const event = await calendar.events.get({
-      calendarId: 'primary',
-      eventId: eventId,
-    });
-
-    // Ask for confirmation
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    const confirmation = await new Promise((resolve) => {
-      rl.question(`Are you sure you want to delete the event "${event.data.summary}"? (yes/no): `, (answer) => {
-        rl.close();
-        resolve(answer.toLowerCase() === 'yes');
-      });
-    });
-
-    if (!confirmation) {
-      console.log('Event deletion cancelled.');
-      return false;
-    }
-
-    // Delete the event
     await calendar.events.delete({
       calendarId: 'primary',
       eventId: eventId,
     });
-
-    console.log('Event deleted successfully.');
     return true;
   } catch (error) {
-    console.error('Error deleting event:', error);
-    if (error.code === 404) {
-      throw new Error('Event not found. Please check the event ID.');
-    }
-    throw error;
+    console.error('Detailed error in deleteCalendarEvent:', error.response ? error.response.data : error);
+    return false;
   }
 }
 
