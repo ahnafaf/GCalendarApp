@@ -1,5 +1,4 @@
 const { getCalendarEvents, addCalendarEvent, deleteCalendarEvent } = require('./googleCalendar');
-const readline = require('readline-sync');
 const OpenAI = require('openai');
 require('dotenv').config();
 
@@ -159,31 +158,17 @@ async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
       ).join('\n')
       : "You have no other events scheduled on this day.\n";
     
-    console.log(conflictMessage);
-    const confirmation = readline.question(`Are you sure you want to add "${functionArgs.summary}" from ${new Date(functionArgs.start).toLocaleString()} to ${new Date(functionArgs.end).toLocaleString()}? (yes/no): `);
-    
-    if (confirmation.toLowerCase() === 'yes') {
-      const result = await addCalendarEvent(
-        functionArgs.summary,
-        functionArgs.start,
-        functionArgs.end,
-        functionArgs.description,
-        functionArgs.location
-      );
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: true, link: result.htmlLink })
-      });
-    } else {
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: false, error: "User cancelled event addition" })
-      });
-    }
+    messages.push({
+      role: "tool",
+      tool_call_id: toolCall.id,
+      name: toolCall.function.name,
+      content: JSON.stringify({ 
+        conflictMessage: conflictMessage,
+        eventSummary: functionArgs.summary,
+        eventStart: new Date(functionArgs.start).toLocaleString(),
+        eventEnd: new Date(functionArgs.end).toLocaleString()
+      })
+    });
   } catch (error) {
     console.error("Error checking calendar or adding event:", error);
     messages.push({
@@ -198,10 +183,6 @@ async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
 async function handleGetCalendarEvents(toolCall, functionArgs, messages) {
   try {
     const events = await getCalendarEvents(new Date(functionArgs.start_date), new Date(functionArgs.end_date));
-    console.log("\nEvents in specified range:");
-    events.forEach((event, i) => {
-      console.log(`${i + 1}. ${event.summary} (${formatEventTime(event.start)} - ${formatEventTime(event.end)}) - ID: ${event.id}`);
-    });
     messages.push({
       role: "tool",
       tool_call_id: toolCall.id,
@@ -222,32 +203,26 @@ async function handleGetCalendarEvents(toolCall, functionArgs, messages) {
 async function handleDeleteCalendarEvent(toolCall, functionArgs, messages) {
   try {
     const eventId = functionArgs.eventId;
-    const event = await getCalendarEvents(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
-    const eventToDelete = event.find(e => e.id === eventId);
+    const events = await getCalendarEvents(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
+    const eventToDelete = events.find(e => e.id === eventId);
     
     if (!eventToDelete) {
       throw new Error("Event not found");
     }
     
-    console.log(`Event to delete: ${eventToDelete.summary} (${formatEventTime(eventToDelete.start)} - ${formatEventTime(eventToDelete.end)})`);
-    const confirmation = readline.question(`Are you sure you want to delete this event? (yes/no): `);
-    
-    if (confirmation.toLowerCase() === 'yes') {
-      const result = await deleteCalendarEvent(eventId);
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: result, message: result ? "Event deleted successfully" : "Failed to delete event" })
-      });
-    } else {
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: false, error: "User cancelled event deletion" })
-      });
-    }
+    messages.push({
+      role: "tool",
+      tool_call_id: toolCall.id,
+      name: toolCall.function.name,
+      content: JSON.stringify({ 
+        eventToDelete: {
+          id: eventToDelete.id,
+          summary: eventToDelete.summary,
+          start: formatEventTime(eventToDelete.start),
+          end: formatEventTime(eventToDelete.end)
+        }
+      })
+    });
   } catch (error) {
     console.error("Error deleting event:", error);
     messages.push({
@@ -263,40 +238,55 @@ function formatEventTime(eventTime) {
   return eventTime.dateTime ? new Date(eventTime.dateTime).toLocaleString() : "All day";
 }
 
-async function chat() {
-  console.log("Welcome to the GCalendar!");
-  console.log("\nType 'exit' to quit, 'events' to list upcoming events, or simply describe an event you wish to add or delete.");
+let conversationMessages = [];
 
-  const now = new Date();
-  const currentDateTimeString = now.toISOString();
-  const currentYear = now.getFullYear();
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const offset = -now.getTimezoneOffset() / 60;
-  const timeZoneString = `${timeZone} (UTC${offset >= 0 ? '+' : ''}${offset})`;
+async function chat(userInput) {
+  if (conversationMessages.length === 0) {
+    const now = new Date();
+    const currentDateTimeString = now.toISOString();
+    const currentYear = now.getFullYear();
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offset = -now.getTimezoneOffset() / 60;
+    const timeZoneString = `${timeZone} (UTC${offset >= 0 ? '+' : ''}${offset})`;
 
-  let messages = [
-    {
+    conversationMessages.push({
       "role": "system", 
       "content": `You are a helpful assistant with access to Google Calendar. The current date and time is ${currentDateTimeString}. The user's timezone is ${timeZoneString}. When adding events, interpret the user's intent and provide the event details using this current date, time, and timezone as context. Always use ${currentYear} or a future year for events unless explicitly specified otherwise. Before adding an event, always check for conflicts and ask for confirmation. You can also delete events when requested. Maintain context throughout the conversation.`
-    }
-  ];
+    });
+  }
 
-  while (true) {
-    const userInput = readline.question('You: ');
+  try {
+    const response = await runConversation(conversationMessages, userInput);
+    return response;
+  } catch (error) {
+    console.error("An error occurred:", error.message);
+    return "An error occurred. Please try again.";
+  }
+}
 
-    if (userInput.toLowerCase() === 'exit') {
-      console.log('Goodbye!');
-      break;
-    } else if (userInput.toLowerCase() === 'events') {
-      await listTodaysEvents();
-    } else {
-      try {
-        const response = await runConversation(messages, userInput);
-        console.log(`Bot: ${response}`);
-      } catch (error) {
-        console.error("An error occurred:", error.message);
-      }
-    }
+async function confirmAddEvent(eventDetails) {
+  try {
+    const result = await addCalendarEvent(
+      eventDetails.summary,
+      eventDetails.start,
+      eventDetails.end,
+      eventDetails.description,
+      eventDetails.location
+    );
+    return { success: true, link: result.htmlLink };
+  } catch (error) {
+    console.error("Error adding event:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function confirmDeleteEvent(eventId) {
+  try {
+    const result = await deleteCalendarEvent(eventId);
+    return { success: result, message: result ? "Event deleted successfully" : "Failed to delete event" };
+  } catch (error) {
+    console.error("Error deleting event:", error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -305,14 +295,11 @@ async function listTodaysEvents() {
   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
   const endOfDay = new Date(today.setHours(23, 59, 59, 999));
   try {
-    const events = await getCalendarEvents(startOfDay, endOfDay);
-    console.log("\nToday's events:");
-    events.forEach((event, i) => {
-      console.log(`${i + 1}. ${event.summary} (${formatEventTime(event.start)} - ${formatEventTime(event.end)}) - ID: ${event.id}`);
-    });
+    return await getCalendarEvents(startOfDay, endOfDay);
   } catch (error) {
     console.log("Failed to fetch events. Make sure Google Calendar is set up correctly. Error: ", error);
+    return [];
   }
 }
 
-module.exports = { chat };
+module.exports = { chat, confirmAddEvent, confirmDeleteEvent, listTodaysEvents };
