@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calendar Assistant</title>
-    <script src="/socket.io/socket.io.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
 
@@ -68,7 +67,6 @@
         .example, .capability, .limitation {
             position: relative;
             padding-left: 20px;
-            cursor: pointer;
         }
         .example::before, .capability::before, .limitation::before {
             content: '•';
@@ -111,27 +109,6 @@
         .send-icon:hover {
             transform: scale(1.1);
         }
-        #chat-box {
-            margin-top: 20px;
-            background-color: rgba(255, 255, 255, 0.08);
-            border-radius: 15px;
-            padding: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .message {
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 10px;
-        }
-        .user-message {
-            background-color: rgba(76, 175, 80, 0.2);
-            align-self: flex-end;
-        }
-        .bot-message {
-            background-color: rgba(33, 150, 243, 0.2);
-            align-self: flex-start;
-        }
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -169,50 +146,9 @@
             </div>
         </div>
         <div class="input-container">
-            <input type="text" id="message-input" placeholder="Type your request here...">
-            <span class="send-icon" onclick="sendMessage()">➤</span>
+            <input type="text" placeholder="Type your request here...">
+            <span class="send-icon">➤</span>
         </div>
-        <div id="chat-box"></div>
     </div>
-    <script>
-        const socket = io();
-        const chatBox = document.getElementById('chat-box');
-        const messageInput = document.getElementById('message-input');
-
-        socket.on('response', (response) => {
-            addMessage('Bot', response);
-        });
-
-        function sendMessage() {
-            const message = messageInput.value;
-            if (message) {
-                socket.emit('message', message);
-                addMessage('You', message);
-                messageInput.value = '';
-            }
-        }
-
-        function addMessage(sender, text) {
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('message');
-            messageElement.classList.add(sender === 'You' ? 'user-message' : 'bot-message');
-            messageElement.textContent = `${sender}: ${text}`;
-            chatBox.appendChild(messageElement);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-
-        document.querySelectorAll('.example').forEach(example => {
-            example.addEventListener('click', () => {
-                messageInput.value = example.textContent.replace(' →', '');
-                sendMessage();
-            });
-        });
-    </script>
 </body>
 </html>
