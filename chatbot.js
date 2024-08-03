@@ -105,7 +105,7 @@ async function runConversation(messages, userInput) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -129,11 +129,25 @@ async function runConversation(messages, userInput) {
       }
 
       const secondResponse = await openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-4o",
         messages: messages,
       });
 
       messages.push(secondResponse.choices[0].message);
+
+      // Check if an event was added or deleted and include relevant information in the response
+      const lastToolMessage = messages.find(msg => msg.role === 'tool' && (msg.name === 'addCalendarEvent' || msg.name === 'deleteCalendarEvent'));
+      if (lastToolMessage) {
+        const content = JSON.parse(lastToolMessage.content);
+        if (content.success) {
+          if (lastToolMessage.name === 'addCalendarEvent' && content.eventLink) {
+            return `${secondResponse.choices[0].message.content}\n\nEvent added successfully. You can view it here: ${content.eventLink}`;
+          } else if (lastToolMessage.name === 'deleteCalendarEvent') {
+            return `${secondResponse.choices[0].message.content}\n\nEvent "${content.deletedEvent.summary}" was successfully deleted.`;
+          }
+        }
+      }
+
       return secondResponse.choices[0].message.content;
     }
 
@@ -143,6 +157,7 @@ async function runConversation(messages, userInput) {
     return "I'm sorry, but an error occurred while processing your request. Please try again.";
   }
 }
+
 
 async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
   const eventDate = new Date(functionArgs.start);
@@ -158,15 +173,26 @@ async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
       ).join('\n')
       : "You have no other events scheduled on this day.\n";
     
+    // Actually add the event to the calendar
+    const addedEvent = await addCalendarEvent(
+      functionArgs.summary,
+      functionArgs.start,
+      functionArgs.end,
+      functionArgs.description,
+      functionArgs.location
+    );
+
     messages.push({
       role: "tool",
       tool_call_id: toolCall.id,
       name: toolCall.function.name,
       content: JSON.stringify({ 
+        success: true,
         conflictMessage: conflictMessage,
-        eventSummary: functionArgs.summary,
-        eventStart: new Date(functionArgs.start).toLocaleString(),
-        eventEnd: new Date(functionArgs.end).toLocaleString()
+        eventSummary: addedEvent.summary,
+        eventStart: new Date(addedEvent.start.dateTime).toLocaleString(),
+        eventEnd: new Date(addedEvent.end.dateTime).toLocaleString(),
+        eventLink: addedEvent.htmlLink
       })
     });
   } catch (error) {
@@ -210,19 +236,28 @@ async function handleDeleteCalendarEvent(toolCall, functionArgs, messages) {
       throw new Error("Event not found");
     }
     
-    messages.push({
-      role: "tool",
-      tool_call_id: toolCall.id,
-      name: toolCall.function.name,
-      content: JSON.stringify({ 
-        eventToDelete: {
-          id: eventToDelete.id,
-          summary: eventToDelete.summary,
-          start: formatEventTime(eventToDelete.start),
-          end: formatEventTime(eventToDelete.end)
-        }
-      })
-    });
+    // Actually delete the event
+    const deleteResult = await deleteCalendarEvent(eventId);
+    
+    if (deleteResult) {
+      messages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        name: toolCall.function.name,
+        content: JSON.stringify({ 
+          success: true,
+          message: "Event deleted successfully",
+          deletedEvent: {
+            id: eventToDelete.id,
+            summary: eventToDelete.summary,
+            start: formatEventTime(eventToDelete.start),
+            end: formatEventTime(eventToDelete.end)
+          }
+        })
+      });
+    } else {
+      throw new Error("Failed to delete event");
+    }
   } catch (error) {
     console.error("Error deleting event:", error);
     messages.push({
@@ -233,6 +268,7 @@ async function handleDeleteCalendarEvent(toolCall, functionArgs, messages) {
     });
   }
 }
+
 
 function formatEventTime(eventTime) {
   return eventTime.dateTime ? new Date(eventTime.dateTime).toLocaleString() : "All day";
