@@ -140,10 +140,28 @@ async function runConversation(messages, userInput) {
       if (lastToolMessage) {
         const content = JSON.parse(lastToolMessage.content);
         if (content.success) {
-          if (lastToolMessage.name === 'addCalendarEvent' && content.eventLink) {
-            return `${secondResponse.choices[0].message.content}\n\nEvent added successfully. You can view it here: ${content.eventLink}`;
+          if (lastToolMessage.name === 'addCalendarEvent') {
+            return {
+              type: "event_confirmation",
+              success: true,
+              event: {
+                summary: content.eventSummary,
+                start: content.eventStart,
+                end: content.eventEnd,
+                location: content.location || ""
+              },
+              message: secondResponse.choices[0].message.content,
+              link: content.eventLink
+            };
           } else if (lastToolMessage.name === 'deleteCalendarEvent') {
-            return `${secondResponse.choices[0].message.content}\n\nEvent "${content.deletedEvent.summary}" was successfully deleted.`;
+            return {
+              type: "event_deletion",
+              success: true,
+              event: {
+                summary: content.deletedEvent.summary
+              },
+              message: `${secondResponse.choices[0].message.content}\n\nEvent "${content.deletedEvent.summary}" was successfully deleted.`
+            };
           }
         }
       }
@@ -157,7 +175,6 @@ async function runConversation(messages, userInput) {
     return "I'm sorry, but an error occurred while processing your request. Please try again.";
   }
 }
-
 
 async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
   const eventDate = new Date(functionArgs.start);
@@ -192,6 +209,7 @@ async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
         eventSummary: addedEvent.summary,
         eventStart: new Date(addedEvent.start.dateTime).toLocaleString(),
         eventEnd: new Date(addedEvent.end.dateTime).toLocaleString(),
+        location: addedEvent.location,
         eventLink: addedEvent.htmlLink
       })
     });
@@ -269,7 +287,6 @@ async function handleDeleteCalendarEvent(toolCall, functionArgs, messages) {
   }
 }
 
-
 function formatEventTime(eventTime) {
   return eventTime.dateTime ? new Date(eventTime.dateTime).toLocaleString() : "All day";
 }
@@ -309,20 +326,59 @@ async function confirmAddEvent(eventDetails) {
       eventDetails.description,
       eventDetails.location
     );
-    return { success: true, link: result.htmlLink };
+    return {
+      type: "event_confirmation",
+      success: true,
+      event: {
+        summary: result.summary,
+        start: result.start.dateTime || result.start.date,
+        end: result.end.dateTime || result.end.date,
+        location: result.location || ""
+      },
+      message: "Your event has been successfully added to your calendar.",
+      link: result.htmlLink
+    };
   } catch (error) {
     console.error("Error adding event:", error);
-    return { success: false, error: error.message };
+    return {
+      type: "event_confirmation",
+      success: false,
+      message: "Failed to add the event to your calendar.",
+      error: error.message
+    };
   }
 }
 
 async function confirmDeleteEvent(eventId) {
   try {
+    const events = await getCalendarEvents(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
+    const eventToDelete = events.find(e => e.id === eventId);
+    
+    if (!eventToDelete) {
+      throw new Error("Event not found");
+    }
+    
     const result = await deleteCalendarEvent(eventId);
-    return { success: result, message: result ? "Event deleted successfully" : "Failed to delete event" };
+    if (result) {
+      return {
+        type: "event_deletion",
+        success: true,
+        event: {
+          summary: eventToDelete.summary
+        },
+        message: `The event "${eventToDelete.summary}" has been successfully removed from your calendar.`
+      };
+    } else {
+      throw new Error("Failed to delete event");
+    }
   } catch (error) {
     console.error("Error deleting event:", error);
-    return { success: false, error: error.message };
+    return {
+      type: "event_deletion",
+      success: false,
+      message: "Failed to delete the event from your calendar.",
+      error: error.message
+    };
   }
 }
 
