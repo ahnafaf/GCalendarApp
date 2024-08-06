@@ -1,5 +1,4 @@
 const { getCalendarEvents, addCalendarEvent, deleteCalendarEvent } = require('./googleCalendar');
-const readline = require('readline-sync');
 const OpenAI = require('openai');
 require('dotenv').config();
 
@@ -106,7 +105,7 @@ async function runConversation(messages, userInput) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -130,11 +129,43 @@ async function runConversation(messages, userInput) {
       }
 
       const secondResponse = await openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-4o",
         messages: messages,
       });
 
       messages.push(secondResponse.choices[0].message);
+
+      // Check if an event was added or deleted and include relevant information in the response
+      const lastToolMessage = messages.find(msg => msg.role === 'tool' && (msg.name === 'addCalendarEvent' || msg.name === 'deleteCalendarEvent'));
+      if (lastToolMessage) {
+        const content = JSON.parse(lastToolMessage.content);
+        if (content.success) {
+          if (lastToolMessage.name === 'addCalendarEvent') {
+            return {
+              type: "event_confirmation",
+              success: true,
+              event: {
+                summary: content.eventSummary,
+                start: content.eventStart,
+                end: content.eventEnd,
+                location: content.location || ""
+              },
+              message: secondResponse.choices[0].message.content,
+              link: content.eventLink
+            };
+          } else if (lastToolMessage.name === 'deleteCalendarEvent') {
+            return {
+              type: "event_deletion",
+              success: true,
+              event: {
+                summary: content.deletedEvent.summary
+              },
+              message: `${secondResponse.choices[0].message.content}\n\nEvent "${content.deletedEvent.summary}" was successfully deleted.`
+            };
+          }
+        }
+      }
+
       return secondResponse.choices[0].message.content;
     }
 
@@ -159,31 +190,29 @@ async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
       ).join('\n')
       : "You have no other events scheduled on this day.\n";
     
-    console.log(conflictMessage);
-    const confirmation = readline.question(`Are you sure you want to add "${functionArgs.summary}" from ${new Date(functionArgs.start).toLocaleString()} to ${new Date(functionArgs.end).toLocaleString()}? (yes/no): `);
-    
-    if (confirmation.toLowerCase() === 'yes') {
-      const result = await addCalendarEvent(
-        functionArgs.summary,
-        functionArgs.start,
-        functionArgs.end,
-        functionArgs.description,
-        functionArgs.location
-      );
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: true, link: result.htmlLink })
-      });
-    } else {
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: false, error: "User cancelled event addition" })
-      });
-    }
+    // Actually add the event to the calendar
+    const addedEvent = await addCalendarEvent(
+      functionArgs.summary,
+      functionArgs.start,
+      functionArgs.end,
+      functionArgs.description,
+      functionArgs.location
+    );
+
+    messages.push({
+      role: "tool",
+      tool_call_id: toolCall.id,
+      name: toolCall.function.name,
+      content: JSON.stringify({ 
+        success: true,
+        conflictMessage: conflictMessage,
+        eventSummary: addedEvent.summary,
+        eventStart: new Date(addedEvent.start.dateTime).toLocaleString(),
+        eventEnd: new Date(addedEvent.end.dateTime).toLocaleString(),
+        location: addedEvent.location,
+        eventLink: addedEvent.htmlLink
+      })
+    });
   } catch (error) {
     console.error("Error checking calendar or adding event:", error);
     messages.push({
@@ -198,10 +227,6 @@ async function handleAddCalendarEvent(toolCall, functionArgs, messages) {
 async function handleGetCalendarEvents(toolCall, functionArgs, messages) {
   try {
     const events = await getCalendarEvents(new Date(functionArgs.start_date), new Date(functionArgs.end_date));
-    console.log("\nEvents in specified range:");
-    events.forEach((event, i) => {
-      console.log(`${i + 1}. ${event.summary} (${formatEventTime(event.start)} - ${formatEventTime(event.end)}) - ID: ${event.id}`);
-    });
     messages.push({
       role: "tool",
       tool_call_id: toolCall.id,
@@ -222,31 +247,34 @@ async function handleGetCalendarEvents(toolCall, functionArgs, messages) {
 async function handleDeleteCalendarEvent(toolCall, functionArgs, messages) {
   try {
     const eventId = functionArgs.eventId;
-    const event = await getCalendarEvents(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
-    const eventToDelete = event.find(e => e.id === eventId);
+    const events = await getCalendarEvents(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
+    const eventToDelete = events.find(e => e.id === eventId);
     
     if (!eventToDelete) {
       throw new Error("Event not found");
     }
     
-    console.log(`Event to delete: ${eventToDelete.summary} (${formatEventTime(eventToDelete.start)} - ${formatEventTime(eventToDelete.end)})`);
-    const confirmation = readline.question(`Are you sure you want to delete this event? (yes/no): `);
+    // Actually delete the event
+    const deleteResult = await deleteCalendarEvent(eventId);
     
-    if (confirmation.toLowerCase() === 'yes') {
-      const result = await deleteCalendarEvent(eventId);
+    if (deleteResult) {
       messages.push({
         role: "tool",
         tool_call_id: toolCall.id,
         name: toolCall.function.name,
-        content: JSON.stringify({ success: result, message: result ? "Event deleted successfully" : "Failed to delete event" })
+        content: JSON.stringify({ 
+          success: true,
+          message: "Event deleted successfully",
+          deletedEvent: {
+            id: eventToDelete.id,
+            summary: eventToDelete.summary,
+            start: formatEventTime(eventToDelete.start),
+            end: formatEventTime(eventToDelete.end)
+          }
+        })
       });
     } else {
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: JSON.stringify({ success: false, error: "User cancelled event deletion" })
-      });
+      throw new Error("Failed to delete event");
     }
   } catch (error) {
     console.error("Error deleting event:", error);
@@ -263,40 +291,94 @@ function formatEventTime(eventTime) {
   return eventTime.dateTime ? new Date(eventTime.dateTime).toLocaleString() : "All day";
 }
 
-async function chat() {
-  console.log("Welcome to the GCalendar!");
-  console.log("\nType 'exit' to quit, 'events' to list upcoming events, or simply describe an event you wish to add or delete.");
+let conversationMessages = [];
 
-  const now = new Date();
-  const currentDateTimeString = now.toISOString();
-  const currentYear = now.getFullYear();
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const offset = -now.getTimezoneOffset() / 60;
-  const timeZoneString = `${timeZone} (UTC${offset >= 0 ? '+' : ''}${offset})`;
+async function chat(userInput) {
+  if (conversationMessages.length === 0) {
+    const now = new Date();
+    const currentDateTimeString = now.toISOString();
+    const currentYear = now.getFullYear();
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offset = -now.getTimezoneOffset() / 60;
+    const timeZoneString = `${timeZone} (UTC${offset >= 0 ? '+' : ''}${offset})`;
 
-  let messages = [
-    {
+    conversationMessages.push({
       "role": "system", 
       "content": `You are a helpful assistant with access to Google Calendar. The current date and time is ${currentDateTimeString}. The user's timezone is ${timeZoneString}. When adding events, interpret the user's intent and provide the event details using this current date, time, and timezone as context. Always use ${currentYear} or a future year for events unless explicitly specified otherwise. Before adding an event, always check for conflicts and ask for confirmation. You can also delete events when requested. Maintain context throughout the conversation.`
+    });
+  }
+
+  try {
+    const response = await runConversation(conversationMessages, userInput);
+    return response;
+  } catch (error) {
+    console.error("An error occurred:", error.message);
+    return "An error occurred. Please try again.";
+  }
+}
+
+async function confirmAddEvent(eventDetails) {
+  try {
+    const result = await addCalendarEvent(
+      eventDetails.summary,
+      eventDetails.start,
+      eventDetails.end,
+      eventDetails.description,
+      eventDetails.location
+    );
+    return {
+      type: "event_confirmation",
+      success: true,
+      event: {
+        summary: result.summary,
+        start: result.start.dateTime || result.start.date,
+        end: result.end.dateTime || result.end.date,
+        location: result.location || ""
+      },
+      message: "Your event has been successfully added to your calendar.",
+      link: result.htmlLink
+    };
+  } catch (error) {
+    console.error("Error adding event:", error);
+    return {
+      type: "event_confirmation",
+      success: false,
+      message: "Failed to add the event to your calendar.",
+      error: error.message
+    };
+  }
+}
+
+async function confirmDeleteEvent(eventId) {
+  try {
+    const events = await getCalendarEvents(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
+    const eventToDelete = events.find(e => e.id === eventId);
+    
+    if (!eventToDelete) {
+      throw new Error("Event not found");
     }
-  ];
-
-  while (true) {
-    const userInput = readline.question('You: ');
-
-    if (userInput.toLowerCase() === 'exit') {
-      console.log('Goodbye!');
-      break;
-    } else if (userInput.toLowerCase() === 'events') {
-      await listTodaysEvents();
+    
+    const result = await deleteCalendarEvent(eventId);
+    if (result) {
+      return {
+        type: "event_deletion",
+        success: true,
+        event: {
+          summary: eventToDelete.summary
+        },
+        message: `The event "${eventToDelete.summary}" has been successfully removed from your calendar.`
+      };
     } else {
-      try {
-        const response = await runConversation(messages, userInput);
-        console.log(`Bot: ${response}`);
-      } catch (error) {
-        console.error("An error occurred:", error.message);
-      }
+      throw new Error("Failed to delete event");
     }
+  } catch (error) {
+    console.error("Error deleting event:", error);
+    return {
+      type: "event_deletion",
+      success: false,
+      message: "Failed to delete the event from your calendar.",
+      error: error.message
+    };
   }
 }
 
@@ -305,14 +387,11 @@ async function listTodaysEvents() {
   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
   const endOfDay = new Date(today.setHours(23, 59, 59, 999));
   try {
-    const events = await getCalendarEvents(startOfDay, endOfDay);
-    console.log("\nToday's events:");
-    events.forEach((event, i) => {
-      console.log(`${i + 1}. ${event.summary} (${formatEventTime(event.start)} - ${formatEventTime(event.end)}) - ID: ${event.id}`);
-    });
+    return await getCalendarEvents(startOfDay, endOfDay);
   } catch (error) {
     console.log("Failed to fetch events. Make sure Google Calendar is set up correctly. Error: ", error);
+    return [];
   }
 }
 
-module.exports = { chat };
+module.exports = { chat, confirmAddEvent, confirmDeleteEvent, listTodaysEvents };

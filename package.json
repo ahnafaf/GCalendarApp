@@ -12,11 +12,17 @@
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
     "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
     "googleapis": "^105.0.0",
+    "luxon": "^3.5.0",
     "open": "^10.1.0",
     "openai": "^4.52.5",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "readline-sync": "^1.4.10",
     "sequelize": "^6.37.3",
+    "socket.io": "^4.7.5",
     "sqlite3": "^5.1.7"
   }
 }

@@ -141,25 +141,33 @@ async function insertEvents(events) {
 
 
 // Function to sync calendar events
+// In database.js
+
+// In database.js
+
+const { getCalendarEvents } = require('./googleCalendar');
+
 async function syncCalendarEvents() {
   try {
     const lastSyncedTime = await getLastSyncedTime();
     console.log('Last synced time:', lastSyncedTime);
 
-    console.log('Fetching events from Google Calendar...');
-    const events = await listEvents(null, lastSyncedTime);
+    const now = new Date();
+    const sixMonthsLater = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
+
+    console.log('Fetching events from Google Calendar since last sync...');
+    const events = await getCalendarEvents(lastSyncedTime, sixMonthsLater);
     console.log(`Fetched ${events.length} new or updated events.`);
 
     if (events.length > 0) {
-      console.log('Inserting events into the database...');
-      await insertEvents(events);
-      console.log('Events inserted successfully.');
+      console.log('Inserting/updating events in the database...');
+      await insertOrUpdateEvents(events);
+      console.log('Events inserted/updated successfully.');
 
-      const latestEventTime = new Date();
-      await updateLastSyncedTime(latestEventTime);
-      console.log('Updated last synced time to:', latestEventTime);
+      await updateLastSyncedTime(now);
+      console.log('Updated last synced time to:', now);
     } else {
-      console.log('No new events to sync.');
+      console.log('No new or updated events to sync.');
     }
 
   } catch (error) {
@@ -167,6 +175,32 @@ async function syncCalendarEvents() {
     throw error;
   }
 }
+
+async function insertOrUpdateEvents(events) {
+  try {
+    for (const event of events) {
+      await Event.upsert({
+        id: event.id,
+        summary: event.summary || '',
+        description: event.description || '',
+        location: event.location || '',
+        start_time: event.start.dateTime || event.start.date,
+        end_time: event.end.dateTime || event.end.date,
+        created_time: event.created,
+        updated_time: event.updated,
+        recurrence: event.recurrence ? event.recurrence.join(',') : '',
+        status: event.status,
+        organizer: event.organizer ? event.organizer.email : '',
+        attendees: event.attendees ? event.attendees.map(a => a.email).join(',') : ''
+      });
+    }
+  } catch (error) {
+    console.error('Error inserting/updating events:', error);
+    throw error;
+  }
+}
+
+
 
 // Function to get all events
 async function getAllEvents() {

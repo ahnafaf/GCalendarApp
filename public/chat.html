@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar Assistant</title>
+    <link rel="stylesheet" href="chat.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Calendar Assistant</h1>
+        <div class="grid">
+            <div class="grid-item">
+                <div class="icon">📅</div>
+                <h3>Examples</h3>
+                <p class="example">"Schedule a meeting for tomorrow at 2 PM" →</p>
+                <p class="example">"What events do I have next week?" →</p>
+                <p class="example">"Cancel my appointment on Friday" →</p>
+            </div>
+            <div class="grid-item">
+                <div class="icon">🚀</div>
+                <h3>Capabilities</h3>
+                <p class="capability">Integrates with Google Calendar</p>
+                <p class="capability">Understands natural language queries</p>
+                <p class="capability">Can add, view, and delete events</p>
+            </div>
+            <div class="grid-item">
+                <div class="icon">⚠️</div>
+                <h3>Limitations</h3>
+                <p class="limitation">May misinterpret complex date/time info</p>
+                <p class="limitation">Limited to authorized calendars</p>
+                <p class="limitation">Bound by Google Calendar features</p>
+            </div>
+        </div>
+        <div id="chat-box">
+            <div id="loading" class="loading hidden">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+        <div class="input-container">
+            <input type="text" id="message-input" placeholder="Type your request here...">
+            <span class="send-icon" onclick="sendMessage()">➤</span>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="chat.js"></script>
+</body>
+
+</html>
