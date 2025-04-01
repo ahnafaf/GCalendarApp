@@ -1,121 +1,81 @@
-# Google Calendar Assistant
+# Google Calendar AI Chatbot
 
-## Overview
-
-This project is a Node.js-based command-line application that integrates with Google Calendar, allowing users to manage their calendar events through natural language interactions. It uses OpenAI's GPT model to interpret user inputs and perform calendar operations.
-
-Why use this?
-
-- Contextual awareness: Plan your week using events. Allows you to get a sanity check on events you potentially might have missed.
-- Natural Language Event Creation: Add events to your calendar using everyday language, making event creation quick and intuitive.
-- Intelligent Scheduling: The assistant understands complex time-related requests, helping to schedule events efficiently based on your availability.
-- Quick Event Modifications: Easily change event details like time, date, or participants without navigating through multiple menus.
-- Effortless Event Retrieval: Quickly find out what's on your schedule for any given day, week, or month using simple queries.
-
+A Next.js application that integrates with Google Calendar and uses OpenAI's GPT-4o for natural language processing. Users can chat with an AI assistant to manage their Google Calendar events.
 
 ## Features
 
-- Add new events to Google Calendar
-- Retrieve events from a specified date range
-- Modify existing events
-- Delete events
-- Natural language processing for user inputs
-- Conflict detection when adding new events
-- Time zone awareness
+- **Google Authentication**: Secure login with Google OAuth
+- **AI-Powered Chat**: Natural language interaction with your calendar
+- **Calendar Integration**: View, add, update, and delete events
+- **Smart Scheduling**: Find available time slots based on your preferences
+- **Conflict Detection**: Automatically detect and resolve scheduling conflicts
 
-## Prerequisites
+## Technologies Used
 
-Before you begin, ensure you have met the following requirements:
+- **Next.js**: React framework for server-rendered applications
+- **NextAuth.js**: Authentication for Next.js applications
+- **OpenAI API**: GPT-4o for natural language processing
+- **Google Calendar API**: Calendar integration
+- **SQLite**: Local database for caching calendar events
+- **Sequelize**: ORM for database operations
 
-- Node.js (v12.0.0 or higher)
-- npm (Node Package Manager)
-- A Google Cloud Project with the Google Calendar API enabled
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v14 or later)
+- Google Cloud Platform account with Calendar API enabled
 - OpenAI API key
 
-## Installation
+### Environment Variables
 
-1. Clone the repository:
+Create a `.env` file in the root directory with the following variables:
+
 ```
-git clone https://github.com/ahnafaf/google-calendar-assistant.git
-cd google-calendar-assistant
+OPENAI_API_KEY=your_openai_api_key
+MONGODB_URI=mongodb://localhost:27017/gCalendarData
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+NEXTAUTH_URL=http://localhost:3000
 ```
 
-3. Install the dependencies:
-```
-npm install
-```
+### Installation
 
-
-4. Set up your Google Cloud Project and obtain the necessary credentials:
-- Go to the [Google Cloud Console](https://console.cloud.google.com/)
-- Create a new project or select an existing one
-- Enable the Google Calendar API for your project
-- Create credentials (OAuth 2.0 Client ID) for a desktop application
-- Download the credentials JSON file and save it as `credentials.json` in the project root directory
-
-4. Set up your OpenAI API key:
-- Create a `.env` file in the project root
-- Add your OpenAI API key to the `.env` file:
-  ```
-  OPENAI_API_KEY=your_api_key_here
-  ```
+1. Clone the repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Initialize the database:
+   ```
+   npm run init-db
+   ```
+4. Start the development server:
+   ```
+   npm run dev
+   ```
 
 ## Usage
 
-To start the application, run:
-```
-node main
-```
+1. Open your browser and navigate to `http://localhost:3000`
+2. Click "Sign in with Google" to authenticate
+3. Once authenticated, you'll be redirected to the chat page
+4. Start chatting with the AI assistant to manage your calendar
 
-
-On first run, you'll be prompted to authorize the application with your Google account. Follow the provided URL, grant the necessary permissions, and enter the authorization code when prompted.
-
-Once authorized, you can interact with the assistant using natural language. Here are some example commands:
-
-- "Add a meeting with John tomorrow at 2 PM"
+Example commands:
+- "Schedule a meeting for tomorrow at 2 PM"
 - "What events do I have next week?"
-- "Modify my 3 PM meeting to start at 4 PM"
-- "Delete my dentist appointment"
-- "Show me today's events"
+- "Cancel my appointment on Friday"
 
-Type 'exit' to quit the application.
+## Project Structure
 
-## File Structure
-
-- `main.js`: The entry point of the application. Contains the main chat loop and integration with OpenAI.
-- `googleCalendar.js`: Handles all interactions with the Google Calendar API.
-- `credentials.json`: Your Google Cloud Project credentials (not included in the repository).
-- `token.json`: Stores the user's access and refresh tokens (auto-generated on first run).
-- `.env`: Contains environment variables like the OpenAI API key.
-
-## Configuration
-
-The application uses the following environment variables:
-
-- `OPENAI_API_KEY`: Your OpenAI API key
-
-These should be set in the `.env` file.
-
-## Troubleshooting
-
-- If you encounter authentication issues, delete the `token.json` file and restart the application to re-authenticate.
-- Ensure that your Google Cloud Project has the Google Calendar API enabled.
-- Check that your `credentials.json` file is correctly placed in the project root directory.
-- Verify that your OpenAI API key is correctly set in the `.env` file.
-
-## Contributing
-
-Contributions to this project are welcome. Please fork the repository and submit a pull request with your changes.
+- `/auth`: Authentication configuration
+- `/components`: React components
+- `/lib`: Utility functions and chatbot implementation
+- `/middleware`: Authentication middleware
+- `/pages`: Next.js pages and API routes
+- `/public`: Static assets
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- OpenAI for providing the GPT model
-- Google for the Calendar API
-- All contributors and users of this project
-
-
-
+This project is licensed under the ISC License.

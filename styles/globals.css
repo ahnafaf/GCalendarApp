@@ -1,0 +1,38 @@
+/* globals.css (or styles/globals.css) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    /* Using Tailwind config defaults or your custom theme values */
+    @apply bg-gray-100 text-gray-800 min-h-screen flex justify-center items-center p-5;
+    font-family: 'Inter', sans-serif; /* Ensure 'Inter' is imported/linked */
+  }
+
+  /* Optional: Define base font-weight for headings globally if desired */
+  /* h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+   } */
+  /* It's often better to apply font-weight directly in components */
+}
+
+/* Add any other absolutely necessary global styles here */
+
+/* Example loading animation keyframes (if not using Tailwind's built-in bounce) */
+/* @layer utilities {
+  @keyframes bounce-custom {
+    0%, 100% {
+      transform: translateY(-25%);
+      animation-timing-function: cubic-bezier(0.8,0,1,1);
+    }
+    50% {
+      transform: translateY(0);
+      animation-timing-function: cubic-bezier(0,0,0.2,1);
+    }
+  }
+  .animate-bounce-custom {
+    animation: bounce-custom 1s infinite;
+  }
+} */
+/* Note: Tailwind's animate-bounce should suffice for the loading dots */

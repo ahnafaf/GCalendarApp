@@ -1,81 +1,100 @@
 const { google } = require('googleapis');
 const { OAuth2Client } = require('google-auth-library');
-const fs = require('fs').promises;
-const readline = require('readline');
-const path = require('path');
 
-const SCOPES = ['https://www.googleapis.com/auth/calendar'];
-const TOKEN_PATH = path.join(process.cwd(), 'token.json');
-const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json');
-const REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
-
-let calendar;
-
-async function setupGoogleCalendar() {
+/**
+ * Creates and configures an OAuth2Client with the provided tokens
+ * @param {Object} tokens - The tokens object containing access_token and optionally refresh_token
+ * @returns {OAuth2Client} - Configured OAuth2Client instance
+ */
+function createOAuth2Client(tokens) {
   try {
-    const credentials = JSON.parse(await fs.readFile(CREDENTIALS_PATH, 'utf8'));
-    const { client_secret, client_id } = credentials.installed;
-    const oAuth2Client = new OAuth2Client(client_id, client_secret, 'urn:ietf:wg:oauth:2.0:oob');
+    const credentials = require('./credentials.json');
+    const { client_secret, client_id, redirect_uris } = credentials.web;
+    const oauth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
     
-    let token;
-    try {
-      token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf8'));
-      oAuth2Client.setCredentials(token);
-    } catch (error) {
-      console.log('No existing token found or token invalid. Initiating new token retrieval.');
-      token = await getNewToken(oAuth2Client);
-      oAuth2Client.setCredentials(token);
+    // Handle both full tokens object and just access_token
+    if (typeof tokens === 'object' && tokens !== null) {
+      if (tokens.access_token) {
+        // If it's just the access_token from NextAuth session
+        oauth2Client.setCredentials({
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          token_type: 'Bearer'
+        });
+      } else {
+        // If it's a full tokens object
+        oauth2Client.setCredentials(tokens);
+      }
+    } else {
+      console.error('Invalid tokens format:', tokens);
+      throw new Error('Invalid tokens format');
     }
     
-    calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
-    console.log('Google Calendar setup completed successfully.');
-    return true;
+    return oauth2Client;
   } catch (error) {
-    console.error('Error setting up Google Calendar:', error.message);
-    return false;
+    console.error('Error creating OAuth2Client:', error);
+    throw error;
   }
 }
 
-async function getNewToken(oAuth2Client) {
-  const authUrl = oAuth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: SCOPES,
-    prompt: 'consent'
-  });
-
-  console.log('Authorize this app by visiting this url:', authUrl);
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  const code = await new Promise((resolve) => {
-    rl.question('Enter the code from that page here: ', (code) => {
-      rl.close();
-      resolve(code);
-    });
-  });
-
+/**
+ * Get calendar events for a specific date range
+ * @param {Object} tokens - User's OAuth tokens
+ * @param {Date} start_date - Start date for events
+ * @param {Date} end_date - End date for events
+ * @returns {Array} - List of calendar events
+ */
+async function getCalendarEvents(tokens, start_date, end_date) {
   try {
-    const { tokens } = await oAuth2Client.getToken(code);
-    oAuth2Client.setCredentials(tokens);
-    await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens));
-    console.log('Token stored to', TOKEN_PATH);
-    return tokens;
-  } catch (err) {
-    console.error('Error retrieving access token', err);
-    throw err;
+    const oauth2Client = createOAuth2Client(tokens);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const res = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: start_date.toISOString(),
+      timeMax: end_date.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+    return res.data.items || [];
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    return [];
   }
 }
 
-async function addCalendarEvent(summary, start, end, description, location) {
+/**
+ * Add a new calendar event
+ * @param {Object} tokens - User's OAuth tokens
+ * @param {string} summary - Event title
+ * @param {string} start - Event start time
+ * @param {string} end - Event end time
+ * @param {string} description - Event description
+ * @param {string} location - Event location
+ * @param {Array} reminders - Optional reminders in minutes
+ * @returns {Object} - Created event data
+ */
+async function addCalendarEvent(tokens, summary, start, end, description, location, reminders) {
+  const oauth2Client = createOAuth2Client(tokens);
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  
   const event = {
     summary,
-    location,
     description,
-    start: { dateTime: start, timeZone: 'UTC' },
-    end: { dateTime: end, timeZone: 'UTC' },
+    location,
+    start: { dateTime: start },
+    end: { dateTime: end },
   };
+  
+  // Add reminders if provided
+  if (reminders && Array.isArray(reminders) && reminders.length > 0) {
+    event.reminders = {
+      useDefault: false,
+      overrides: reminders.map(minutes => ({
+        method: 'popup',
+        minutes: minutes
+      }))
+    };
+  }
 
   try {
     const res = await calendar.events.insert({
@@ -84,108 +103,112 @@ async function addCalendarEvent(summary, start, end, description, location) {
     });
     return res.data;
   } catch (error) {
-    console.error('Error creating event:', error);
+    console.error('Error adding event:', error);
     throw error;
   }
 }
 
-async function getCalendarEvents(start_date, end_date) {
+/**
+ * Delete a calendar event
+ * @param {Object} tokens - User's OAuth tokens
+ * @param {string} eventId - ID of the event to delete 
+ * @param {string} calendarId - Calendar ID (defaults to 'primary')
+ * @returns {Object} - Deleted event summary
+ */
+async function deleteCalendarEvent(tokens, eventId, calendarId = 'primary') {
+  // Validate inputs
+  if (!tokens) {
+    throw new Error('OAuth tokens are required');
+  }
+  
+  if (!eventId) {
+    throw new Error('Event ID is required');
+  }
+  
+  const oauth2Client = createOAuth2Client(tokens);
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
   
   try {
-    const res = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: start_date.toISOString(),
-      timeMax: end_date.toISOString(),
-      maxResults: 1000,
-      singleEvents: true,
-      orderBy: 'startTime',
+    // First get the event to return its summary after deletion
+    let eventSummary = null;
+    try {
+      const event = await calendar.events.get({
+        calendarId: calendarId,
+        eventId: eventId,
+      });
+      eventSummary = event.data.summary;
+    } catch (getError) {
+      console.warn(`Could not retrieve event details before deletion: ${getError.message}`);
+    }
+    
+    await calendar.events.delete({
+      calendarId: calendarId,
+      eventId: eventId,
     });
-    return res.data.items;
+    return { success: true, summary: eventSummary, eventId: eventId };
   } catch (error) {
-    console.error('Error fetching events:', error);
-    throw error;
+    console.error(`Error deleting event ${eventId}:`, error.message);
+    return { success: false, error: error.message, eventId: eventId };
   }
 }
 
-// Function to fetch events from Google Calendar
-async function listEvents(auth, lastSyncedTime) {
-  const res = await calendar.events.list({
-    calendarId: 'primary',
-    timeMin: lastSyncedTime,
-    maxResults: 2500,
-    singleEvents: true,
-    orderBy: 'startTime',
-  });
-
-  return res.data.items;
-}
-
-// Add these functions to your googleCalendar.js file
-
-async function modifyCalendarEvent(eventId, updates) {
-  if (!eventId) {
-    throw new Error('Event ID is required to modify an event.');
-  }
-
+/**
+ * Update a calendar event
+ * @param {Object} tokens - User's OAuth tokens
+ * @param {string} eventId - ID of the event to update
+ * @param {Object} updates - Object containing fields to update
+ * @returns {Object} - Updated event data
+ */
+async function updateCalendarEvent(tokens, eventId, updates) {
+  const oauth2Client = createOAuth2Client(tokens);
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  
   try {
-    // First, get the existing event
-    const existingEvent = await calendar.events.get({
+    // First get the current event
+    const currentEvent = await calendar.events.get({
       calendarId: 'primary',
       eventId: eventId,
     });
-
-    // Merge the updates with the existing event data
-    const updatedEvent = {
-      ...existingEvent.data,
-      ...updates,
-    };
-
-    // Ensure start and end times are in the correct format
-    if (updatedEvent.start && updatedEvent.start.dateTime) {
-      updatedEvent.start.dateTime = new Date(updatedEvent.start.dateTime).toISOString();
+    
+    // Prepare the update payload
+    const updatedEvent = { ...currentEvent.data };
+    
+    if (updates.summary) updatedEvent.summary = updates.summary;
+    if (updates.description) updatedEvent.description = updates.description;
+    if (updates.location) updatedEvent.location = updates.location;
+    
+    if (updates.start) {
+      updatedEvent.start = {
+        dateTime: updates.start,
+        timeZone: currentEvent.data.start.timeZone
+      };
     }
-    if (updatedEvent.end && updatedEvent.end.dateTime) {
-      updatedEvent.end.dateTime = new Date(updatedEvent.end.dateTime).toISOString();
+    
+    if (updates.end) {
+      updatedEvent.end = {
+        dateTime: updates.end,
+        timeZone: currentEvent.data.end.timeZone
+      };
     }
-
+    
     // Update the event
     const res = await calendar.events.update({
       calendarId: 'primary',
       eventId: eventId,
       resource: updatedEvent,
     });
-
-    console.log(`Event updated successfully: ${res.data.htmlLink}`);
+    
     return res.data;
   } catch (error) {
-    console.error('Error modifying event:', error);
-    if (error.code === 404) {
-      throw new Error('Event not found. Please check the event ID.');
-    }
+    console.error('Error updating event:', error);
     throw error;
   }
 }
 
-
-async function deleteCalendarEvent(eventId) {
-  try {
-    await calendar.events.delete({
-      calendarId: 'primary',
-      eventId: eventId,
-    });
-    return true;
-  } catch (error) {
-    console.error('Detailed error in deleteCalendarEvent:', error.response ? error.response.data : error);
-    return false;
-  }
-}
-
-// Don't forget to export these new functions
-module.exports = { 
-  setupGoogleCalendar, 
-  addCalendarEvent, 
-  getCalendarEvents, 
-  listEvents,
-  modifyCalendarEvent,
-  deleteCalendarEvent
+module.exports = {
+  createOAuth2Client,
+  getCalendarEvents,
+  addCalendarEvent,
+  deleteCalendarEvent,
+  updateCalendarEvent
 };
