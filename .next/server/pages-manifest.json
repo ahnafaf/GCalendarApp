@@ -2,7 +2,7 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/api/auth/[...nextauth]": "pages/api/auth/[...nextauth].js",
   "/api/chat-stream": "pages/api/chat-stream.js",
+  "/api/auth/[...nextauth]": "pages/api/auth/[...nextauth].js",
   "/chat": "pages/chat.js"
 }
