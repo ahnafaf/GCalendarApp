@@ -49,12 +49,13 @@ export default async function handler(req, res) {
     
     // Send initial message
     res.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
-    // Force flush the initial message
+    
+    // Force flush the initial messages
     if (res.flush) {
       try {
         res.flush();
       } catch (flushError) {
-        console.warn("Error flushing initial message:", flushError);
+        console.warn("Error flushing start message:", flushError);
       }
     }
     
@@ -81,8 +82,8 @@ export default async function handler(req, res) {
       // Call the chatbot with streaming enabled
       await chatbot(message, userId, accessToken, streamCallback, startNewConversation);
       
-      // Add a small delay before sending the end message
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Add a small delay before sending the end message to ensure all processing steps are visible
+      await new Promise(resolve => setTimeout(resolve, 800));
       
       // Send completion message
       const endMessage = JSON.stringify({ type: 'end' });
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
       }
       
       // Add another small delay before ending the response
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       res.end();
     } catch (error) {
